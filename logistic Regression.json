@@ -1,0 +1,1416 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Logistic Regression with a Neural Network mindset\n",
+    "\n",
+    "Welcome to your first (required) programming assignment! You will build a logistic regression classifier to recognize  cats. This assignment will step you through how to do this with a Neural Network mindset, and will also hone your intuitions about deep learning.\n",
+    "\n",
+    "**Instructions:**\n",
+    "- Do not use loops (for/while) in your code, unless the instructions explicitly ask you to do so.\n",
+    "- Use `np.dot(X,Y)` to calculate dot products.\n",
+    "\n",
+    "**You will learn to:**\n",
+    "- Build the general architecture of a learning algorithm, including:\n",
+    "    - Initializing parameters\n",
+    "    - Calculating the cost function and its gradient\n",
+    "    - Using an optimization algorithm (gradient descent) \n",
+    "- Gather all three functions above into a main model function, in the right order."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Table of Contents\n",
+    "- [1 - Packages](#1)\n",
+    "- [2 - Overview of the Problem set](#2)\n",
+    "    - [Exercise 1](#ex-1)\n",
+    "    - [Exercise 2](#ex-2)\n",
+    "- [3 - General Architecture of the learning algorithm](#3)\n",
+    "- [4 - Building the parts of our algorithm](#4)\n",
+    "    - [4.1 - Helper functions](#4-1)\n",
+    "        - [Exercise 3 - sigmoid](#ex-3)\n",
+    "    - [4.2 - Initializing parameters](#4-2)\n",
+    "        - [Exercise 4 - initialize_with_zeros](#ex-4)\n",
+    "    - [4.3 - Forward and Backward propagation](#4-3)\n",
+    "        - [Exercise 5 - propagate](#ex-5)\n",
+    "    - [4.4 - Optimization](#4-4)\n",
+    "        - [Exercise 6 - optimize](#ex-6)\n",
+    "        - [Exercise 7 - predict](#ex-7)\n",
+    "- [5 - Merge all functions into a model](#5)\n",
+    "    - [Exercise 8 - model](#ex-8)\n",
+    "- [6 - Further analysis (optional/ungraded exercise)](#6)\n",
+    "- [7 - Test with your own image (optional/ungraded exercise)](#7)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='1'></a>\n",
+    "## 1 - Packages ##\n",
+    "\n",
+    "First, let's run the cell below to import all the packages that you will need during this assignment. \n",
+    "- [numpy](https://numpy.org/doc/1.20/) is the fundamental package for scientific computing with Python.\n",
+    "- [h5py](http://www.h5py.org) is a common package to interact with a dataset that is stored on an H5 file.\n",
+    "- [matplotlib](http://matplotlib.org) is a famous library to plot graphs in Python.\n",
+    "- [PIL](https://pillow.readthedocs.io/en/stable/) and [scipy](https://www.scipy.org/) are used here to test your model with your own picture at the end."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import copy\n",
+    "import matplotlib.pyplot as plt\n",
+    "import h5py\n",
+    "import scipy\n",
+    "from PIL import Image\n",
+    "from scipy import ndimage\n",
+    "from lr_utils import load_dataset\n",
+    "from public_tests import *\n",
+    "\n",
+    "%matplotlib inline\n",
+    "%load_ext autoreload\n",
+    "%autoreload 2"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='2'></a>\n",
+    "## 2 - Overview of the Problem set ##\n",
+    "\n",
+    "**Problem Statement**: You are given a dataset (\"data.h5\") containing:\n",
+    "    - a training set of m_train images labeled as cat (y=1) or non-cat (y=0)\n",
+    "    - a test set of m_test images labeled as cat or non-cat\n",
+    "    - each image is of shape (num_px, num_px, 3) where 3 is for the 3 channels (RGB). Thus, each image is square (height = num_px) and (width = num_px).\n",
+    "\n",
+    "You will build a simple image-recognition algorithm that can correctly classify pictures as cat or non-cat.\n",
+    "\n",
+    "Let's get more familiar with the dataset. Load the data by running the following code."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Loading the data (cat/non-cat)\n",
+    "train_set_x_orig, train_set_y, test_set_x_orig, test_set_y, classes = load_dataset()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "We added \"_orig\" at the end of image datasets (train and test) because we are going to preprocess them. After preprocessing, we will end up with train_set_x and test_set_x (the labels train_set_y and test_set_y don't need any preprocessing).\n",
+    "\n",
+    "Each line of your train_set_x_orig and test_set_x_orig is an array representing an image. You can visualize an example by running the following code. Feel free also to change the `index` value and re-run to see other images. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "y = [0], it's a 'non-cat' picture.\n"
+     ]
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Example of a picture\n",
+    "index = 78\n",
+    "\n",
+    "plt.imshow(train_set_x_orig[index])\n",
+    "print (\"y = \" + str(train_set_y[:, index]) + \", it's a '\" + classes[np.squeeze(train_set_y[:, index])].decode(\"utf-8\") +  \"' picture.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Many software bugs in deep learning come from having matrix/vector dimensions that don't fit. If you can keep your matrix/vector dimensions straight you will go a long way toward eliminating many bugs. \n",
+    "\n",
+    "<a name='ex-1'></a>\n",
+    "### Exercise 1\n",
+    "Find the values for:\n",
+    "    - m_train (number of training examples)\n",
+    "    - m_test (number of test examples)\n",
+    "    - num_px (= height = width of a training image)\n",
+    "Remember that `train_set_x_orig` is a numpy-array of shape (m_train, num_px, num_px, 3). For instance, you can access `m_train` by writing `train_set_x_orig.shape[0]`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "921fe679a632ec7ec9963069fa405725",
+     "grade": false,
+     "grade_id": "cell-c4e7e9c1f174eb83",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Number of training examples: m_train = 209\n",
+      "Number of testing examples: m_test = 50\n",
+      "Height/Width of each image: num_px = 64\n",
+      "Each image is of size: (64, 64, 3)\n",
+      "train_set_x shape: (209, 64, 64, 3)\n",
+      "train_set_y shape: (1, 209)\n",
+      "test_set_x shape: (50, 64, 64, 3)\n",
+      "test_set_y shape: (1, 50)\n"
+     ]
+    }
+   ],
+   "source": [
+    "#(≈ 3 lines of code)\n",
+    "# m_train = \n",
+    "# m_test = \n",
+    "# num_px = \n",
+    "# YOUR CODE STARTS HERE\n",
+    "\n",
+    "m_train = train_set_x_orig.shape[0]\n",
+    "m_test = test_set_x_orig.shape[0]\n",
+    "num_px = train_set_x_orig.shape[1]\n",
+    "# YOUR CODE ENDS HERE\n",
+    "\n",
+    "print (\"Number of training examples: m_train = \" + str(m_train))\n",
+    "print (\"Number of testing examples: m_test = \" + str(m_test))\n",
+    "print (\"Height/Width of each image: num_px = \" + str(num_px))\n",
+    "print (\"Each image is of size: (\" + str(num_px) + \", \" + str(num_px) + \", 3)\")\n",
+    "print (\"train_set_x shape: \" + str(train_set_x_orig.shape))\n",
+    "print (\"train_set_y shape: \" + str(train_set_y.shape))\n",
+    "print (\"test_set_x shape: \" + str(test_set_x_orig.shape))\n",
+    "print (\"test_set_y shape: \" + str(test_set_y.shape))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Expected Output for m_train, m_test and num_px**: \n",
+    "<table style=\"width:15%\">\n",
+    "  <tr>\n",
+    "    <td> m_train </td>\n",
+    "    <td> 209 </td> \n",
+    "  </tr>\n",
+    "  \n",
+    "  <tr>\n",
+    "    <td>m_test</td>\n",
+    "    <td> 50 </td> \n",
+    "  </tr>\n",
+    "  \n",
+    "  <tr>\n",
+    "    <td>num_px</td>\n",
+    "    <td> 64 </td> \n",
+    "  </tr>\n",
+    "  \n",
+    "</table>\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "For convenience, you should now reshape images of shape (num_px, num_px, 3) in a numpy-array of shape (num_px $*$ num_px $*$ 3, 1). After this, our training (and test) dataset is a numpy-array where each column represents a flattened image. There should be m_train (respectively m_test) columns.\n",
+    "\n",
+    "<a name='ex-2'></a>\n",
+    "### Exercise 2\n",
+    "Reshape the training and test data sets so that images of size (num_px, num_px, 3) are flattened into single vectors of shape (num\\_px $*$ num\\_px $*$ 3, 1).\n",
+    "\n",
+    "A trick when you want to flatten a matrix X of shape (a,b,c,d) to a matrix X_flatten of shape (b$*$c$*$d, a) is to use: \n",
+    "```python\n",
+    "X_flatten = X.reshape(X.shape[0], -1).T      # X.T is the transpose of X\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "5a2aa62bdd8c01450111b758ef159aec",
+     "grade": false,
+     "grade_id": "cell-0f43921062c34e50",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "train_set_x_flatten shape: (12288, 209)\n",
+      "train_set_y shape: (1, 209)\n",
+      "test_set_x_flatten shape: (12288, 50)\n",
+      "test_set_y shape: (1, 50)\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Reshape the training and test examples\n",
+    "#(≈ 2 lines of code)\n",
+    "# train_set_x_flatten = ...\n",
+    "# test_set_x_flatten = ...\n",
+    "# YOUR CODE STARTS HERE\n",
+    "train_set_x_flatten = train_set_x_orig.reshape(train_set_x_orig.shape[0], -1).T\n",
+    "test_set_x_flatten = test_set_x_orig.reshape(test_set_x_orig.shape[0], -1).T\n",
+    "\n",
+    "# YOUR CODE ENDS HERE\n",
+    "\n",
+    "# Check that the first 10 pixels of the second image are in the correct place\n",
+    "assert np.alltrue(train_set_x_flatten[0:10, 1] == [196, 192, 190, 193, 186, 182, 188, 179, 174, 213]), \"Wrong solution. Use (X.shape[0], -1).T.\"\n",
+    "assert np.alltrue(test_set_x_flatten[0:10, 1] == [115, 110, 111, 137, 129, 129, 155, 146, 145, 159]), \"Wrong solution. Use (X.shape[0], -1).T.\"\n",
+    "\n",
+    "print (\"train_set_x_flatten shape: \" + str(train_set_x_flatten.shape))\n",
+    "print (\"train_set_y shape: \" + str(train_set_y.shape))\n",
+    "print (\"test_set_x_flatten shape: \" + str(test_set_x_flatten.shape))\n",
+    "print (\"test_set_y shape: \" + str(test_set_y.shape))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Expected Output**: \n",
+    "\n",
+    "<table style=\"width:35%\">\n",
+    "  <tr>\n",
+    "    <td>train_set_x_flatten shape</td>\n",
+    "    <td> (12288, 209)</td> \n",
+    "  </tr>\n",
+    "  <tr>\n",
+    "    <td>train_set_y shape</td>\n",
+    "    <td>(1, 209)</td> \n",
+    "  </tr>\n",
+    "  <tr>\n",
+    "    <td>test_set_x_flatten shape</td>\n",
+    "    <td>(12288, 50)</td> \n",
+    "  </tr>\n",
+    "  <tr>\n",
+    "    <td>test_set_y shape</td>\n",
+    "    <td>(1, 50)</td> \n",
+    "  </tr>\n",
+    "</table>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "To represent color images, the red, green and blue channels (RGB) must be specified for each pixel, and so the pixel value is actually a vector of three numbers ranging from 0 to 255.\n",
+    "\n",
+    "One common preprocessing step in machine learning is to center and standardize your dataset, meaning that you substract the mean of the whole numpy array from each example, and then divide each example by the standard deviation of the whole numpy array. But for picture datasets, it is simpler and more convenient and works almost as well to just divide every row of the dataset by 255 (the maximum value of a pixel channel).\n",
+    "\n",
+    "<!-- During the training of your model, you're going to multiply weights and add biases to some initial inputs in order to observe neuron activations. Then you backpropogate with the gradients to train the model. But, it is extremely important for each feature to have a similar range such that our gradients don't explode. You will see that more in detail later in the lectures. !--> \n",
+    "\n",
+    "Let's standardize our dataset."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_set_x = train_set_x_flatten / 255.\n",
+    "test_set_x = test_set_x_flatten / 255."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<font color='blue'>\n",
+    "    \n",
+    "    \n",
+    "**What you need to remember:**\n",
+    "\n",
+    "Common steps for pre-processing a new dataset are:\n",
+    "- Figure out the dimensions and shapes of the problem (m_train, m_test, num_px, ...)\n",
+    "- Reshape the datasets such that each example is now a vector of size (num_px \\* num_px \\* 3, 1)\n",
+    "- \"Standardize\" the data"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='3'></a>\n",
+    "## 3 - General Architecture of the learning algorithm ##\n",
+    "\n",
+    "It's time to design a simple algorithm to distinguish cat images from non-cat images.\n",
+    "\n",
+    "You will build a Logistic Regression, using a Neural Network mindset. The following Figure explains why **Logistic Regression is actually a very simple Neural Network!**\n",
+    "\n",
+    "<img src=\"images/LogReg_kiank.png\" style=\"width:650px;height:400px;\">\n",
+    "\n",
+    "**Mathematical expression of the algorithm**:\n",
+    "\n",
+    "For one example $x^{(i)}$:\n",
+    "$$z^{(i)} = w^T x^{(i)} + b \\tag{1}$$\n",
+    "$$\\hat{y}^{(i)} = a^{(i)} = sigmoid(z^{(i)})\\tag{2}$$ \n",
+    "$$ \\mathcal{L}(a^{(i)}, y^{(i)}) =  - y^{(i)}  \\log(a^{(i)}) - (1-y^{(i)} )  \\log(1-a^{(i)})\\tag{3}$$\n",
+    "\n",
+    "The cost is then computed by summing over all training examples:\n",
+    "$$ J = \\frac{1}{m} \\sum_{i=1}^m \\mathcal{L}(a^{(i)}, y^{(i)})\\tag{6}$$\n",
+    "\n",
+    "**Key steps**:\n",
+    "In this exercise, you will carry out the following steps: \n",
+    "    - Initialize the parameters of the model\n",
+    "    - Learn the parameters for the model by minimizing the cost  \n",
+    "    - Use the learned parameters to make predictions (on the test set)\n",
+    "    - Analyse the results and conclude"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='4'></a>\n",
+    "## 4 - Building the parts of our algorithm ## \n",
+    "\n",
+    "The main steps for building a Neural Network are:\n",
+    "1. Define the model structure (such as number of input features) \n",
+    "2. Initialize the model's parameters\n",
+    "3. Loop:\n",
+    "    - Calculate current loss (forward propagation)\n",
+    "    - Calculate current gradient (backward propagation)\n",
+    "    - Update parameters (gradient descent)\n",
+    "\n",
+    "You often build 1-3 separately and integrate them into one function we call `model()`.\n",
+    "\n",
+    "<a name='4-1'></a>\n",
+    "### 4.1 - Helper functions\n",
+    "\n",
+    "<a name='ex-3'></a>\n",
+    "### Exercise 3 - sigmoid\n",
+    "Using your code from \"Python Basics\", implement `sigmoid()`. As you've seen in the figure above, you need to compute $sigmoid(z) = \\frac{1}{1 + e^{-z}}$ for $z = w^T x + b$ to make predictions. Use np.exp()."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "239ab1cf1028b721fd14f31b8103c40d",
+     "grade": false,
+     "grade_id": "cell-520521c430352f3b",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "sigmoid([0, 2]) = [0.5        0.88079708]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# GRADED FUNCTION: sigmoid\n",
+    "\n",
+    "def sigmoid(z):\n",
+    "    \"\"\"\n",
+    "    Compute the sigmoid of z\n",
+    "\n",
+    "    Arguments:\n",
+    "    z -- A scalar or numpy array of any size.\n",
+    "\n",
+    "    Return:\n",
+    "    s -- sigmoid(z)\n",
+    "    \"\"\"\n",
+    "\n",
+    "    ### START CODE HERE ### (≈ 1 line of code)\n",
+    "    s = 1/(1+np.exp(-z))\n",
+    "    ### END CODE HERE ###\n",
+    "    \n",
+    "    return s\n",
+    "print (\"sigmoid([0, 2]) = \" + str(sigmoid(np.array([0,2]))))\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {
+    "deletable": false,
+    "editable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "0483e6820669111a9c5914d8b24bc315",
+     "grade": true,
+     "grade_id": "cell-30ea3151cab9c491",
+     "locked": true,
+     "points": 10,
+     "schema_version": 3,
+     "solution": false,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "ename": "NameError",
+     "evalue": "name 'sigmoid' is not defined",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-21-a4fc87c10974>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[0;32m----> 1\u001b[0;31m \u001b[0mprint\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0;34m\"sigmoid([0, 2]) = \"\u001b[0m \u001b[0;34m+\u001b[0m \u001b[0mstr\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msigmoid\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mnp\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0marray\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;36m0\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;36m2\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      2\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      3\u001b[0m \u001b[0msigmoid_test\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msigmoid\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mNameError\u001b[0m: name 'sigmoid' is not defined"
+     ]
+    }
+   ],
+   "source": [
+    "print (\"sigmoid([0, 2]) = \" + str(sigmoid(np.array([0,2]))))\n",
+    "\n",
+    "sigmoid_test(sigmoid)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "x = np.array([0.5, 0, 2.0])\n",
+    "output = sigmoid(x)\n",
+    "print(output)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='4-2'></a>\n",
+    "### 4.2 - Initializing parameters\n",
+    "\n",
+    "<a name='ex-4'></a>\n",
+    "### Exercise 4 - initialize_with_zeros\n",
+    "Implement parameter initialization in the cell below. You have to initialize w as a vector of zeros. If you don't know what numpy function to use, look up np.zeros() in the Numpy library's documentation."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "c4a37e375a85ddab7274a33abf46bb7c",
+     "grade": false,
+     "grade_id": "cell-befa9335e479864e",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "w = [[0.]\n",
+      " [0.]]\n",
+      "b = 0\n"
+     ]
+    }
+   ],
+   "source": [
+    "# GRADED FUNCTION: initialize_with_zeros\n",
+    "\n",
+    "def initialize_with_zeros(dim):\n",
+    "    \"\"\"\n",
+    "    This function creates a vector of zeros of shape (dim, 1) for w and initializes b to 0.\n",
+    "    \n",
+    "    Argument:\n",
+    "    dim -- size of the w vector we want (or number of parameters in this case)\n",
+    "    \n",
+    "    Returns:\n",
+    "    w -- initialized vector of shape (dim, 1)\n",
+    "    b -- initialized scalar (corresponds to the bias) of type float\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    w = np.zeros((dim, 1))\n",
+    "    b = 0\n",
+    "    ### END CODE HERE ###\n",
+    "\n",
+    "    assert(w.shape == (dim, 1))\n",
+    "    assert(isinstance(b, float) or isinstance(b, int))\n",
+    "    \n",
+    "    return w, b\n",
+    "dim = 2\n",
+    "w, b = initialize_with_zeros(dim)\n",
+    "print (\"w = \" + str(w))\n",
+    "print (\"b = \" + str(b))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "metadata": {
+    "deletable": false,
+    "editable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "a1f856df8b35b664982b6e4ca82681cf",
+     "grade": true,
+     "grade_id": "cell-a3b6699f145f3a3f",
+     "locked": true,
+     "points": 10,
+     "schema_version": 3,
+     "solution": false,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "ename": "AssertionError",
+     "evalue": "",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mAssertionError\u001b[0m                            Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-33-4f77d2aa60f4>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[1;32m      2\u001b[0m \u001b[0mw\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mb\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0minitialize_with_zeros\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mdim\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      3\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 4\u001b[0;31m \u001b[0;32massert\u001b[0m \u001b[0mtype\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mb\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m==\u001b[0m \u001b[0mfloat\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      5\u001b[0m \u001b[0mprint\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0;34m\"w = \"\u001b[0m \u001b[0;34m+\u001b[0m \u001b[0mstr\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mw\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      6\u001b[0m \u001b[0mprint\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0;34m\"b = \"\u001b[0m \u001b[0;34m+\u001b[0m \u001b[0mstr\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mb\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mAssertionError\u001b[0m: "
+     ]
+    }
+   ],
+   "source": [
+    "dim = 2\n",
+    "w, b = initialize_with_zeros(dim)\n",
+    "\n",
+    "assert type(b) == float\n",
+    "print (\"w = \" + str(w))\n",
+    "print (\"b = \" + str(b))\n",
+    "\n",
+    "initialize_with_zeros_test(initialize_with_zeros)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='4-3'></a>\n",
+    "### 4.3 - Forward and Backward propagation\n",
+    "\n",
+    "Now that your parameters are initialized, you can do the \"forward\" and \"backward\" propagation steps for learning the parameters.\n",
+    "\n",
+    "<a name='ex-5'></a>\n",
+    "### Exercise 5 - propagate\n",
+    "Implement a function `propagate()` that computes the cost function and its gradient.\n",
+    "\n",
+    "**Hints**:\n",
+    "\n",
+    "Forward Propagation:\n",
+    "- You get X\n",
+    "- You compute $A = \\sigma(w^T X + b) = (a^{(1)}, a^{(2)}, ..., a^{(m-1)}, a^{(m)})$\n",
+    "- You calculate the cost function: $J = -\\frac{1}{m}\\sum_{i=1}^{m}(y^{(i)}\\log(a^{(i)})+(1-y^{(i)})\\log(1-a^{(i)}))$\n",
+    "\n",
+    "Here are the two formulas you will be using: \n",
+    "\n",
+    "$$ \\frac{\\partial J}{\\partial w} = \\frac{1}{m}X(A-Y)^T\\tag{7}$$\n",
+    "$$ \\frac{\\partial J}{\\partial b} = \\frac{1}{m} \\sum_{i=1}^m (a^{(i)}-y^{(i)})\\tag{8}$$"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "8c7fa5fd813679d86ba0032de1f813eb",
+     "grade": false,
+     "grade_id": "cell-11af17e28077b3d3",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "dw = [[0.99845601]\n",
+      " [2.39507239]]\n",
+      "db = 0.001455578136784208\n",
+      "cost = 5.801545319394553\n"
+     ]
+    }
+   ],
+   "source": [
+    "# GRADED FUNCTION: propagate\n",
+    "\n",
+    "def propagate(w, b, X, Y):\n",
+    "    \"\"\"\n",
+    "    Implement the cost function and its gradient for the propagation explained above\n",
+    "\n",
+    "    Arguments:\n",
+    "    w -- weights, a numpy array of size (num_px * num_px * 3, 1)\n",
+    "    b -- bias, a scalar\n",
+    "    X -- data of size (num_px * num_px * 3, number of examples)\n",
+    "    Y -- true \"label\" vector (containing 0 if non-cat, 1 if cat) of size (1, number of examples)\n",
+    "\n",
+    "    Return:\n",
+    "    cost -- negative log-likelihood cost for logistic regression\n",
+    "    dw -- gradient of the loss with respect to w, thus same shape as w\n",
+    "    db -- gradient of the loss with respect to b, thus same shape as b\n",
+    "    \n",
+    "    Tips:\n",
+    "    - Write your code step by step for the propagation. np.log(), np.dot()\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    m = X.shape[1]\n",
+    "    \n",
+    "    \n",
+    "    \n",
+    "    # FORWARD PROPAGATION (FROM X TO COST)\n",
+    "    ### START CODE HERE ### (≈ 2 lines of code)\n",
+    "    A = sigmoid(np.dot(w.T, X) + b)                                    # compute activation\n",
+    "    cost = -1/m*(np.sum(Y*np.log(A) + (1-Y)*np.log(1-A)))                                 # compute cost\n",
+    "    ### END CODE HERE ###\n",
+    "    \n",
+    "    # BACKWARD PROPAGATION (TO FIND GRAD)\n",
+    "    ### START CODE HERE ### (≈ 2 lines of code)\n",
+    "    dw = 1/m*(np.dot(X, ((A-Y).T)))\n",
+    "    db = 1/m*(np.sum(A-Y))\n",
+    "    ### END CODE HERE ###\n",
+    "\n",
+    "    assert(dw.shape == w.shape)\n",
+    "    assert(db.dtype == float)\n",
+    "    cost = np.squeeze(cost)\n",
+    "    assert(cost.shape == ())\n",
+    "    \n",
+    "    grads = {\"dw\": dw,\n",
+    "             \"db\": db}\n",
+    "    \n",
+    "    return grads, cost\n",
+    "\n",
+    "w, b, X, Y = np.array([[1.],[2.]]), 2., np.array([[1.,2.,-1.],[3.,4.,-3.2]]), np.array([[1,0,1]])\n",
+    "grads, cost = propagate(w, b, X, Y)\n",
+    "print (\"dw = \" + str(grads[\"dw\"]))\n",
+    "print (\"db = \" + str(grads[\"db\"]))\n",
+    "print (\"cost = \" + str(cost))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "deletable": false,
+    "editable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "48874865ce7cec6f03c3fae76f8bbfbe",
+     "grade": true,
+     "grade_id": "cell-d1594d75b61dd554",
+     "locked": true,
+     "points": 10,
+     "schema_version": 3,
+     "solution": false,
+     "task": false
+    }
+   },
+   "outputs": [],
+   "source": [
+    "w =  np.array([[1.], [2.]])\n",
+    "b = 2.\n",
+    "X =np.array([[1., 2., -1.], [3., 4., -3.2]])\n",
+    "Y = np.array([[1, 0, 1]])\n",
+    "grads, cost = propagate(w, b, X, Y)\n",
+    "\n",
+    "assert type(grads[\"dw\"]) == np.ndarray\n",
+    "assert grads[\"dw\"].shape == (2, 1)\n",
+    "assert type(grads[\"db\"]) == np.float64\n",
+    "\n",
+    "\n",
+    "print (\"dw = \" + str(grads[\"dw\"]))\n",
+    "print (\"db = \" + str(grads[\"db\"]))\n",
+    "print (\"cost = \" + str(cost))\n",
+    "\n",
+    "propagate_test(propagate)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Expected output**\n",
+    "\n",
+    "```\n",
+    "dw = [[0.99845601]\n",
+    " [2.39507239]]\n",
+    "db = 0.001455578136784208\n",
+    "cost = 5.801545319394553\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='4-4'></a>\n",
+    "### 4.4 - Optimization\n",
+    "- You have initialized your parameters.\n",
+    "- You are also able to compute a cost function and its gradient.\n",
+    "- Now, you want to update the parameters using gradient descent.\n",
+    "\n",
+    "<a name='ex-6'></a>\n",
+    "### Exercise 6 - optimize\n",
+    "Write down the optimization function. The goal is to learn $w$ and $b$ by minimizing the cost function $J$. For a parameter $\\theta$, the update rule is $ \\theta = \\theta - \\alpha \\text{ } d\\theta$, where $\\alpha$ is the learning rate."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "49d9b4c1a780bf141c8eb48e06cbb494",
+     "grade": false,
+     "grade_id": "cell-616d6883e807448d",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "w = [[0.19033591]\n",
+      " [0.12259159]]\n",
+      "b = 1.9253598300845747\n",
+      "dw = [[0.67752042]\n",
+      " [1.41625495]]\n",
+      "db = 0.21919450454067652\n"
+     ]
+    }
+   ],
+   "source": [
+    "# GRADED FUNCTION: optimize\n",
+    "\n",
+    "def optimize(w, b, X, Y, num_iterations=100, learning_rate=0.009, print_cost=False):\n",
+    "    \"\"\"\n",
+    "    This function optimizes w and b by running a gradient descent algorithm\n",
+    "    \n",
+    "    Arguments:\n",
+    "    w -- weights, a numpy array of size (num_px * num_px * 3, 1)\n",
+    "    b -- bias, a scalar\n",
+    "    X -- data of shape (num_px * num_px * 3, number of examples)\n",
+    "    Y -- true \"label\" vector (containing 0 if non-cat, 1 if cat), of shape (1, number of examples)\n",
+    "    num_iterations -- number of iterations of the optimization loop\n",
+    "    learning_rate -- learning rate of the gradient descent update rule\n",
+    "    print_cost -- True to print the loss every 100 steps\n",
+    "    \n",
+    "    Returns:\n",
+    "    params -- dictionary containing the weights w and bias b\n",
+    "    grads -- dictionary containing the gradients of the weights and bias with respect to the cost function\n",
+    "    costs -- list of all the costs computed during the optimization, this will be used to plot the learning curve.\n",
+    "    \n",
+    "    Tips:\n",
+    "    You basically need to write down two steps and iterate through them:\n",
+    "        1) Calculate the cost and the gradient for the current parameters. Use propagate().\n",
+    "        2) Update the parameters using gradient descent rule for w and b.\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    w = copy.deepcopy(w)\n",
+    "    b = copy.deepcopy(b)\n",
+    "    \n",
+    "    costs = []\n",
+    "    \n",
+    "    for i in range(num_iterations):\n",
+    "        # (≈ 1 lines of code)\n",
+    "        # Cost and gradient calculation \n",
+    "        # grads, cost = ...\n",
+    "        # YOUR CODE STARTS HERE\n",
+    "        \n",
+    "        grads, cost = propagate(w, b, X, Y)\n",
+    "        # YOUR CODE ENDS HERE\n",
+    "        \n",
+    "        # Retrieve derivatives from grads\n",
+    "        dw = grads[\"dw\"]\n",
+    "        db = grads[\"db\"]\n",
+    "        \n",
+    "        # update rule (≈ 2 lines of code)\n",
+    "        # w = ...\n",
+    "        # b = ...\n",
+    "        # YOUR CODE STARTS HERE\n",
+    "        w = w - (learning_rate)*dw\n",
+    "        b = b - (learning_rate)*db\n",
+    "        # YOUR CODE ENDS HERE\n",
+    "        \n",
+    "        # Record the costs\n",
+    "        if i % 100 == 0:\n",
+    "            costs.append(cost)\n",
+    "        \n",
+    "            # Print the cost every 100 training iterations\n",
+    "            if print_cost:\n",
+    "                print (\"Cost after iteration %i: %f\" %(i, cost))\n",
+    "    \n",
+    "    params = {\"w\": w,\n",
+    "              \"b\": b}\n",
+    "    \n",
+    "    grads = {\"dw\": dw,\n",
+    "             \"db\": db}\n",
+    "    \n",
+    "    return params, grads, costs\n",
+    "\n",
+    "params, grads, costs = optimize(w, b, X, Y, num_iterations= 100, learning_rate = 0.009, print_cost = False)\n",
+    "\n",
+    "print (\"w = \" + str(params[\"w\"]))\n",
+    "print (\"b = \" + str(params[\"b\"]))\n",
+    "print (\"dw = \" + str(grads[\"dw\"]))\n",
+    "print (\"db = \" + str(grads[\"db\"]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "deletable": false,
+    "editable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "b65a5c90f86a990614156e41f64b4678",
+     "grade": true,
+     "grade_id": "cell-8e3d43fbb82a8901",
+     "locked": true,
+     "points": 10,
+     "schema_version": 3,
+     "solution": false,
+     "task": false
+    }
+   },
+   "outputs": [],
+   "source": [
+    "params, grads, costs = optimize(w, b, X, Y, num_iterations=100, learning_rate=0.009, print_cost=False)\n",
+    "\n",
+    "print (\"w = \" + str(params[\"w\"]))\n",
+    "print (\"b = \" + str(params[\"b\"]))\n",
+    "print (\"dw = \" + str(grads[\"dw\"]))\n",
+    "print (\"db = \" + str(grads[\"db\"]))\n",
+    "print(\"Costs = \" + str(costs))\n",
+    "\n",
+    "optimize_test(optimize)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='ex-7'></a>\n",
+    "### Exercise 7 - predict\n",
+    "The previous function will output the learned w and b. We are able to use w and b to predict the labels for a dataset X. Implement the `predict()` function. There are two steps to computing predictions:\n",
+    "\n",
+    "1. Calculate $\\hat{Y} = A = \\sigma(w^T X + b)$\n",
+    "\n",
+    "2. Convert the entries of a into 0 (if activation <= 0.5) or 1 (if activation > 0.5), stores the predictions in a vector `Y_prediction`. If you wish, you can use an `if`/`else` statement in a `for` loop (though there is also a way to vectorize this). "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "e56419b97ebf382a8f93ac2873988887",
+     "grade": false,
+     "grade_id": "cell-d6f924f49c51dc2f",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "predictions = [[1. 1. 0.]]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# GRADED FUNCTION: predict\n",
+    "\n",
+    "def predict(w, b, X):\n",
+    "    '''\n",
+    "    Predict whether the label is 0 or 1 using learned logistic regression parameters (w, b)\n",
+    "    \n",
+    "    Arguments:\n",
+    "    w -- weights, a numpy array of size (num_px * num_px * 3, 1)\n",
+    "    b -- bias, a scalar\n",
+    "    X -- data of size (num_px * num_px * 3, number of examples)\n",
+    "    \n",
+    "    Returns:\n",
+    "    Y_prediction -- a numpy array (vector) containing all predictions (0/1) for the examples in X\n",
+    "    '''\n",
+    "    \n",
+    "    m = X.shape[1]\n",
+    "    Y_prediction = np.zeros((1, m))\n",
+    "    w = w.reshape(X.shape[0], 1)\n",
+    "    \n",
+    "    # Compute vector \"A\" predicting the probabilities of a cat being present in the picture\n",
+    "    #(≈ 1 line of code)\n",
+    "    # A = ...\n",
+    "    # YOUR CODE STARTS HERE\n",
+    "    A = sigmoid(np.dot(w.T, X)+ b)\n",
+    "    \n",
+    "    # YOUR CODE ENDS HERE\n",
+    "    \n",
+    "    for i in range(A.shape[1]):\n",
+    "        \n",
+    "        # Convert probabilities A[0,i] to actual predictions p[0,i]\n",
+    "        #(≈ 4 lines of code)\n",
+    "        # if A[0, i] > ____ :\n",
+    "        #     Y_prediction[0,i] = \n",
+    "        # else:\n",
+    "        #     Y_prediction[0,i] = \n",
+    "        # YOUR CODE STARTS HERE\n",
+    "         Y_prediction[0][i] = 1 if A[0][i]>0.5 else 0\n",
+    "        \n",
+    "        # YOUR CODE ENDS HERE\n",
+    "    \n",
+    "    return Y_prediction\n",
+    "w = np.array([[0.1124579],[0.23106775]])\n",
+    "b = -0.3\n",
+    "X = np.array([[1.,-1.1,-3.2],[1.2,2.,0.1]])\n",
+    "print (\"predictions = \" + str(predict(w, b, X)))\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "deletable": false,
+    "editable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "e3ea12608f15798d542a07c1bc9f561b",
+     "grade": true,
+     "grade_id": "cell-90b1fb967269548c",
+     "locked": true,
+     "points": 10,
+     "schema_version": 3,
+     "solution": false,
+     "task": false
+    }
+   },
+   "outputs": [],
+   "source": [
+    "w = np.array([[0.1124579], [0.23106775]])\n",
+    "b = -0.3\n",
+    "X = np.array([[1., -1.1, -3.2],[1.2, 2., 0.1]])\n",
+    "print (\"predictions = \" + str(predict(w, b, X)))\n",
+    "\n",
+    "predict_test(predict)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<font color='blue'>\n",
+    "    \n",
+    "**What to remember:**\n",
+    "    \n",
+    "You've implemented several functions that:\n",
+    "- Initialize (w,b)\n",
+    "- Optimize the loss iteratively to learn parameters (w,b):\n",
+    "    - Computing the cost and its gradient \n",
+    "    - Updating the parameters using gradient descent\n",
+    "- Use the learned (w,b) to predict the labels for a given set of examples"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='5'></a>\n",
+    "## 5 - Merge all functions into a model ##\n",
+    "\n",
+    "You will now see how the overall model is structured by putting together all the building blocks (functions implemented in the previous parts) together, in the right order.\n",
+    "\n",
+    "<a name='ex-8'></a>\n",
+    "### Exercise 8 - model\n",
+    "Implement the model function. Use the following notation:\n",
+    "    - Y_prediction_test for your predictions on the test set\n",
+    "    - Y_prediction_train for your predictions on the train set\n",
+    "    - parameters, grads, costs for the outputs of optimize()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "deletable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "5b84120627479b28a106a86b61efd80e",
+     "grade": false,
+     "grade_id": "cell-6dcba5967c4cbf8c",
+     "locked": false,
+     "schema_version": 3,
+     "solution": true,
+     "task": false
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# GRADED FUNCTION: model\n",
+    "\n",
+    "def model(X_train, Y_train, X_test, Y_test, num_iterations = 2000, learning_rate = 0.5, print_cost = False):\n",
+    "    \"\"\"\n",
+    "    Builds the logistic regression model by calling the function you've implemented previously\n",
+    "    \n",
+    "    Arguments:\n",
+    "    X_train -- training set represented by a numpy array of shape (num_px * num_px * 3, m_train)\n",
+    "    Y_train -- training labels represented by a numpy array (vector) of shape (1, m_train)\n",
+    "    X_test -- test set represented by a numpy array of shape (num_px * num_px * 3, m_test)\n",
+    "    Y_test -- test labels represented by a numpy array (vector) of shape (1, m_test)\n",
+    "    num_iterations -- hyperparameter representing the number of iterations to optimize the parameters\n",
+    "    learning_rate -- hyperparameter representing the learning rate used in the update rule of optimize()\n",
+    "    print_cost -- Set to true to print the cost every 100 iterations\n",
+    "    \n",
+    "    Returns:\n",
+    "    d -- dictionary containing information about the model.\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    ### START CODE HERE ###\n",
+    "    \n",
+    "    # initialize parameters with zeros (≈ 1 line of code)\n",
+    "    w, b = initialize_with_zeros(X_train.shape[0])\n",
+    "\n",
+    "    # Gradient descent (≈ 1 line of code)\n",
+    "    parameters, grads, costs = optimize(w, b, X_train, Y_train, num_iterations, learning_rate, print_cost = False)\n",
+    "    \n",
+    "    # Retrieve parameters w and b from dictionary \"parameters\"\n",
+    "    w = parameters[\"w\"]\n",
+    "    b = parameters[\"b\"]\n",
+    "    \n",
+    "    # Predict test/train set examples (≈ 2 lines of code)\n",
+    "    Y_prediction_test = predict(w, b, X_test)\n",
+    "    Y_prediction_train = predict(w, b, X_train)\n",
+    "\n",
+    "    ### END CODE HERE ###\n",
+    "\n",
+    "    # Print train/test Errors\n",
+    "    print(\"train accuracy: {} %\".format(100 - np.mean(np.abs(Y_prediction_train - Y_train)) * 100))\n",
+    "    print(\"test accuracy: {} %\".format(100 - np.mean(np.abs(Y_prediction_test - Y_test)) * 100))\n",
+    "\n",
+    "    \n",
+    "    d = {\"costs\": costs,\n",
+    "         \"Y_prediction_test\": Y_prediction_test, \n",
+    "         \"Y_prediction_train\" : Y_prediction_train, \n",
+    "         \"w\" : w, \n",
+    "         \"b\" : b,\n",
+    "         \"learning_rate\" : learning_rate,\n",
+    "         \"num_iterations\": num_iterations}\n",
+    "    \n",
+    "    return d\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "deletable": false,
+    "editable": false,
+    "nbgrader": {
+     "cell_type": "code",
+     "checksum": "ef861169461a4c80af845379770efe90",
+     "grade": true,
+     "grade_id": "cell-4170e070f3cde17e",
+     "locked": true,
+     "points": 10,
+     "schema_version": 3,
+     "solution": false,
+     "task": false
+    }
+   },
+   "outputs": [],
+   "source": [
+    "model_test(model)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "If you pass all the tests, run the following cell to train your model."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 50,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "train accuracy: 99.04306220095694 %\n",
+      "test accuracy: 70.0 %\n"
+     ]
+    }
+   ],
+   "source": [
+    "logistic_regression_model = model(train_set_x, train_set_y, test_set_x, test_set_y, num_iterations=2000, learning_rate=0.005, print_cost=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Comment**: Training accuracy is close to 100%. This is a good sanity check: your model is working and has high enough capacity to fit the training data. Test accuracy is 70%. It is actually not bad for this simple model, given the small dataset we used and that logistic regression is a linear classifier. But no worries, you'll build an even better classifier next week!\n",
+    "\n",
+    "Also, you see that the model is clearly overfitting the training data. Later in this specialization you will learn how to reduce overfitting, for example by using regularization. Using the code below (and changing the `index` variable) you can look at predictions on pictures of the test set."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Example of a picture that was wrongly classified.\n",
+    "index = 1\n",
+    "plt.imshow(test_set_x[:, index].reshape((num_px, num_px, 3)))\n",
+    "print (\"y = \" + str(test_set_y[0,index]) + \", you predicted that it is a \\\"\" + classes[int(logistic_regression_model['Y_prediction_test'][0,index])].decode(\"utf-8\") +  \"\\\" picture.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Let's also plot the cost function and the gradients."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Plot learning curve (with costs)\n",
+    "costs = np.squeeze(logistic_regression_model['costs'])\n",
+    "plt.plot(costs)\n",
+    "plt.ylabel('cost')\n",
+    "plt.xlabel('iterations (per hundreds)')\n",
+    "plt.title(\"Learning rate =\" + str(logistic_regression_model[\"learning_rate\"]))\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Interpretation**:\n",
+    "You can see the cost decreasing. It shows that the parameters are being learned. However, you see that you could train the model even more on the training set. Try to increase the number of iterations in the cell above and rerun the cells. You might see that the training set accuracy goes up, but the test set accuracy goes down. This is called overfitting. "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='6'></a>\n",
+    "## 6 - Further analysis (optional/ungraded exercise) ##\n",
+    "\n",
+    "Congratulations on building your first image classification model. Let's analyze it further, and examine possible choices for the learning rate $\\alpha$. "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Choice of learning rate ####\n",
+    "\n",
+    "**Reminder**:\n",
+    "In order for Gradient Descent to work you must choose the learning rate wisely. The learning rate $\\alpha$  determines how rapidly we update the parameters. If the learning rate is too large we may \"overshoot\" the optimal value. Similarly, if it is too small we will need too many iterations to converge to the best values. That's why it is crucial to use a well-tuned learning rate.\n",
+    "\n",
+    "Let's compare the learning curve of our model with several choices of learning rates. Run the cell below. This should take about 1 minute. Feel free also to try different values than the three we have initialized the `learning_rates` variable to contain, and see what happens. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "learning_rates = [0.01, 0.001, 0.0001]\n",
+    "models = {}\n",
+    "\n",
+    "for lr in learning_rates:\n",
+    "    print (\"Training a model with learning rate: \" + str(lr))\n",
+    "    models[str(lr)] = model(train_set_x, train_set_y, test_set_x, test_set_y, num_iterations=1500, learning_rate=lr, print_cost=False)\n",
+    "    print ('\\n' + \"-------------------------------------------------------\" + '\\n')\n",
+    "\n",
+    "for lr in learning_rates:\n",
+    "    plt.plot(np.squeeze(models[str(lr)][\"costs\"]), label=str(models[str(lr)][\"learning_rate\"]))\n",
+    "\n",
+    "plt.ylabel('cost')\n",
+    "plt.xlabel('iterations (hundreds)')\n",
+    "\n",
+    "legend = plt.legend(loc='upper center', shadow=True)\n",
+    "frame = legend.get_frame()\n",
+    "frame.set_facecolor('0.90')\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Interpretation**: \n",
+    "- Different learning rates give different costs and thus different predictions results.\n",
+    "- If the learning rate is too large (0.01), the cost may oscillate up and down. It may even diverge (though in this example, using 0.01 still eventually ends up at a good value for the cost). \n",
+    "- A lower cost doesn't mean a better model. You have to check if there is possibly overfitting. It happens when the training accuracy is a lot higher than the test accuracy.\n",
+    "- In deep learning, we usually recommend that you: \n",
+    "    - Choose the learning rate that better minimizes the cost function.\n",
+    "    - If your model overfits, use other techniques to reduce overfitting. (We'll talk about this in later videos.) \n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<a name='7'></a>\n",
+    "## 7 - Test with your own image (optional/ungraded exercise) ##\n",
+    "\n",
+    "Congratulations on finishing this assignment. You can use your own image and see the output of your model. To do that:\n",
+    "    1. Click on \"File\" in the upper bar of this notebook, then click \"Open\" to go on your Coursera Hub.\n",
+    "    2. Add your image to this Jupyter Notebook's directory, in the \"images\" folder\n",
+    "    3. Change your image's name in the following code\n",
+    "    4. Run the code and check if the algorithm is right (1 = cat, 0 = non-cat)!"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# change this to the name of your image file\n",
+    "my_image = \"my_image.jpg\"   \n",
+    "\n",
+    "# We preprocess the image to fit your algorithm.\n",
+    "fname = \"images/\" + my_image\n",
+    "image = np.array(Image.open(fname).resize((num_px, num_px)))\n",
+    "plt.imshow(image)\n",
+    "image = image / 255.\n",
+    "image = image.reshape((1, num_px * num_px * 3)).T\n",
+    "my_predicted_image = predict(logistic_regression_model[\"w\"], logistic_regression_model[\"b\"], image)\n",
+    "\n",
+    "print(\"y = \" + str(np.squeeze(my_predicted_image)) + \", your algorithm predicts a \\\"\" + classes[int(np.squeeze(my_predicted_image)),].decode(\"utf-8\") +  \"\\\" picture.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<font color='blue'>\n",
+    "    \n",
+    "**What to remember from this assignment:**\n",
+    "1. Preprocessing the dataset is important.\n",
+    "2. You implemented each function separately: initialize(), propagate(), optimize(). Then you built a model().\n",
+    "3. Tuning the learning rate (which is an example of a \"hyperparameter\") can make a big difference to the algorithm. You will see more examples of this later in this course!"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Finally, if you'd like, we invite you to try different things on this Notebook. Make sure you submit before trying anything. Once you submit, things you can play with include:\n",
+    "    - Play with the learning rate and the number of iterations\n",
+    "    - Try different initialization methods and compare the results\n",
+    "    - Test other preprocessings (center the data, or divide each row by its standard deviation)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Bibliography:\n",
+    "- http://www.wildml.com/2015/09/implementing-a-neural-network-from-scratch/\n",
+    "- https://stats.stackexchange.com/questions/211436/why-do-we-normalize-images-by-subtracting-the-datasets-image-mean-and-not-the-c"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.6"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
